@@ -1,21 +1,35 @@
 ---
-- hosts: '{{ target }}'
+- hosts: "{{ target }}"
+  gather_facts: no
+  become: yes
   tasks:
-    - name: Download latest cloudwatch agent
-      become: true
-      shell: 
-        cmd: "wget https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb"
-      
-    - name: Install debian package
-      become: true
-      command: "dpkg -i -E ./amazon-cloudwatch-agent.deb"
+    - name: Download OCI Monitoring Agent
+      get_url:
+        url: "https://objectstorage.{{ ansible_default_ipv4.address | regex_replace('.*\\.(.*)\\.(.*)\\..*', '\\1-\\2') }}.oraclecloud.com/p/monitoring-agent/monitoring-agent-latest.tar.gz"
+        dest: /tmp/monitoring-agent-latest.tar.gz
+        mode: '0644'
 
-    - name: Copy config file
-      become: true
-      ansible.builtin.copy:
-        src: 'config.json'
-        dest: '{{ cloudwatch_agent_config_path }}'
+    - name: Extract OCI Monitoring Agent
+      unarchive:
+        src: /tmp/monitoring-agent-latest.tar.gz
+        dest: /opt/
+        remote_src: yes
+        creates: /opt/oracle/oci-monitoring-agent
 
-    - name: Reload the config file
-      become: true
-      command: "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:{{ cloudwatch_agent_config_path }} -s"
+    - name: Create monitoring agent directory
+      file:
+        path: /opt/oracle/oci-monitoring-agent/bin
+        state: directory
+        mode: '0755'
+
+    - name: Copy monitoring agent config
+      copy:
+        src: "{{ cloudwatch_agent_config_path }}"
+        dest: /opt/oracle/oci-monitoring-agent/bin/config.json
+        mode: '0644'
+
+    - name: Install and start OCI monitoring agent service
+      systemd:
+        name: oci-monitoring-agent
+        state: started
+        enabled: yes

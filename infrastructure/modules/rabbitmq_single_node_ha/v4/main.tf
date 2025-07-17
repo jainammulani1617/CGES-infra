@@ -1,15 +1,15 @@
 terraform {
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 4.16"
+    oci = {
+      source  = "oracle/oci"
+      version = "~> 6.26.0"
     }
   }
 
   required_version = ">= 1.2.0"
 }
 
-provider "aws" {
+provider "oci" {
   region = var.global.region
 }
 
@@ -17,96 +17,182 @@ provider "aws" {
 # <---- RabbitMQ Instances ---->
 #-------------------------------------------------------------
 
-resource "aws_security_group" "sg_rabbitmq" {
-  name        = "${local.product}-${var.global.environment}-SecurityGroup-RabbitMQ-HA-${var.input.version}"
-  description = "Allow inbound traffic from application"
-  vpc_id      = var.global.vpc_id
+resource "oci_core_network_security_group" "nsg_rabbitmq" {
+  compartment_id = var.global.compartment_id
+  vcn_id         = var.global.vcn_id
+  display_name   = "${local.product}-${var.global.environment}-NSG-RabbitMQ-HA-${var.input.version}"
 
-  ingress {
-    description = "Allow SSH from bastion"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = [var.global.bastion_ip]
-  }
-
-  ingress {
-    description = "Allow incoming connection for rabbitmq haproxy"
-    from_port   = 5672
-    to_port     = 5672
-    protocol    = "tcp"
-    cidr_blocks = var.global.cidr_blocks
-  }
-
-  ingress {
-    description = "Allow incoming connection for rabbitmq"
-    from_port   = 5673
-    to_port     = 5673
-    protocol    = "tcp"
-    cidr_blocks = var.global.cidr_blocks
-  }
-
-  ingress {
-    description = "Allow incoming connection for haproxy stats"
-    from_port   = 7000
-    to_port     = 7000
-    protocol    = "tcp"
-    cidr_blocks = var.global.cidr_blocks
-  }
-
-  ingress {
-    description = "Allow incomming connection for rabbitmq management portal haproxy"
-    from_port   = 15672
-    to_port     = 15672
-    protocol    = "tcp"
-    cidr_blocks = var.global.cidr_blocks
-  }
-
-  ingress {
-    description = "Allow incomming connection for rabbitmq management portal"
-    from_port   = 15673
-    to_port     = 15673
-    protocol    = "tcp"
-    cidr_blocks = var.global.cidr_blocks
-  }
-
-  egress {
-    from_port        = 0
-    to_port          = 0
-    protocol         = "-1"
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
-  }
-
-  tags = {
-    Name         = "${local.product}-${var.global.environment}-SecurityGroup-RabbitMQ-HA-${var.input.version}"
+  freeform_tags = {
+    Name         = "${local.product}-${var.global.environment}-NSG-RabbitMQ-HA-${var.input.version}"
     Environment  = var.global.environment
     Module       = local.product
     Team         = var.global.team
   }
 }
 
-resource "aws_instance" "ec2_rabbitmq" {
-  for_each               = local.rabbitmq.instances
-  key_name               = var.global.bastion_name
-  ami                    = local.rabbitmq.ami
-  instance_type          = each.value.instance_type
-  disable_api_termination = var.input.termination_protection
-  ebs_optimized          = local.rabbitmq.ebs_optimized
-  vpc_security_group_ids = [aws_security_group.sg_rabbitmq.id]
-  subnet_id              = each.value.subnet_id
-  iam_instance_profile   = var.input.cloudwatch_iam_profile
-  root_block_device {
-    volume_size = var.input.volume_size
-    volume_type = local.rabbitmq.volume_type
-    encrypted   = local.rabbitmq.encrypted
+resource "oci_core_network_security_group_security_rule" "nsg_rabbitmq_ssh" {
+  network_security_group_id = oci_core_network_security_group.nsg_rabbitmq.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  description               = "Allow SSH from bastion"
+
+  source      = var.global.bastion_ip
+  source_type = "CIDR_BLOCK"
+
+  tcp_options {
+    destination_port_range {
+      min = 22
+      max = 22
+    }
   }
-  tags = {
-    Name         = each.value.name
-    Environment  = var.global.environment
-    Module       = local.product
-    Team         = var.global.team
+}
+
+resource "oci_core_network_security_group_security_rule" "nsg_rabbitmq_5672" {
+  for_each = toset(var.global.cidr_blocks)
+  
+  network_security_group_id = oci_core_network_security_group.nsg_rabbitmq.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  description               = "Allow incoming connection for rabbitmq haproxy"
+
+  source      = each.value
+  source_type = "CIDR_BLOCK"
+
+  tcp_options {
+    destination_port_range {
+      min = 5672
+      max = 5672
+    }
   }
+}
+
+resource "oci_core_network_security_group_security_rule" "nsg_rabbitmq_5673" {
+  for_each = toset(var.global.cidr_blocks)
+  
+  network_security_group_id = oci_core_network_security_group.nsg_rabbitmq.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  description               = "Allow incoming connection for rabbitmq"
+
+  source      = each.value
+  source_type = "CIDR_BLOCK"
+
+  tcp_options {
+    destination_port_range {
+      min = 5673
+      max = 5673
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "nsg_rabbitmq_7000" {
+  for_each = toset(var.global.cidr_blocks)
+  
+  network_security_group_id = oci_core_network_security_group.nsg_rabbitmq.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  description               = "Allow incoming connection for haproxy stats"
+
+  source      = each.value
+  source_type = "CIDR_BLOCK"
+
+  tcp_options {
+    destination_port_range {
+      min = 7000
+      max = 7000
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "nsg_rabbitmq_15672" {
+  for_each = toset(var.global.cidr_blocks)
+  
+  network_security_group_id = oci_core_network_security_group.nsg_rabbitmq.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  description               = "Allow incoming connection for rabbitmq management portal haproxy"
+
+  source      = each.value
+  source_type = "CIDR_BLOCK"
+
+  tcp_options {
+    destination_port_range {
+      min = 15672
+      max = 15672
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "nsg_rabbitmq_15673" {
+  for_each = toset(var.global.cidr_blocks)
+  
+  network_security_group_id = oci_core_network_security_group.nsg_rabbitmq.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  description               = "Allow incoming connection for rabbitmq management portal"
+
+  source      = each.value
+  source_type = "CIDR_BLOCK"
+
+  tcp_options {
+    destination_port_range {
+      min = 15673
+      max = 15673
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "nsg_rabbitmq_egress" {
+  network_security_group_id = oci_core_network_security_group.nsg_rabbitmq.id
+  direction                 = "EGRESS"
+  protocol                  = "all"
+  description               = "Allow all outbound traffic"
+
+  destination      = "0.0.0.0/0"
+  destination_type = "CIDR_BLOCK"
+}
+
+resource "oci_core_instance" "compute_rabbitmq" {
+  for_each            = local.rabbitmq.instances
+  compartment_id      = var.global.compartment_id
+  availability_domain = each.value.availability_domain
+  shape               = each.value.instance_type
+
+  shape_config {
+    ocpus         = local.rabbitmq.ocpus[each.key]
+    memory_in_gbs = local.rabbitmq.memory_in_gbs[each.key]
+  }
+
+  create_vnic_details {
+    subnet_id                 = each.value.subnet_id
+    assign_public_ip          = false
+    nsg_ids                   = [oci_core_network_security_group.nsg_rabbitmq.id]
+    assign_private_dns_record = true
+  }
+
+  source_details {
+    source_type = "image"
+    source_id   = local.rabbitmq.image_id
+    boot_volume_size_in_gbs = var.input.volume_size
+  }
+
+  metadata = {
+    ssh_authorized_keys = file(var.global.bastion_key)
+  }
+
+  instance_options {
+    are_legacy_imds_endpoints_disabled = false
+  }
+
+  is_pv_encryption_in_transit_enabled = true
+
+  freeform_tags = {
+    Name        = each.value.name
+    Environment = var.global.environment
+    Module      = local.product
+    Team        = var.global.team
+  }
+
   connection {
     type        = "ssh"
     user        = var.global.bastion_user
@@ -119,6 +205,7 @@ resource "aws_instance" "ec2_rabbitmq" {
       "echo 'Wait until SSH is ready'"
     ]
   }
+  
   provisioner "file" {
     source      = "${path.root}/${var.input.initial_configuration_path}"
     destination = local.rabbitmq.initial_configuration_path
@@ -127,20 +214,20 @@ resource "aws_instance" "ec2_rabbitmq" {
 
 locals {
   depends_on = [
-    aws_instance.ec2_rabbitmq
+    oci_core_instance.compute_rabbitmq
   ]
   params = {
-    ips       = join(",", [for v in aws_instance.ec2_rabbitmq : v.private_ip])
+    ips       = join(",", [for v in oci_core_instance.compute_rabbitmq : v.private_ip])
     haproxy_cfg = templatefile("${path.module}/haproxy.cfg", {
-      primary_ip = aws_instance.ec2_rabbitmq[1].private_ip
-      standby_ip = aws_instance.ec2_rabbitmq[2].private_ip
+      primary_ip = oci_core_instance.compute_rabbitmq[1].private_ip
+      standby_ip = oci_core_instance.compute_rabbitmq[2].private_ip
     })
   }
 }
 
 resource "null_resource" "create_swap_memory" {
   depends_on = [
-    aws_instance.ec2_rabbitmq
+    oci_core_instance.compute_rabbitmq
   ]
   triggers = {
     file_hash = filesha1("${path.root}/${var.input.linux_configuration_path}")
@@ -252,148 +339,143 @@ resource "null_resource" "reconfigure_rabbitmq" {
 }
 
 #-------------------------------------------------------------
-# <---- RabbitMQ NLB ---->
+# <---- RabbitMQ Load Balancer ---->
 #-------------------------------------------------------------
 
-resource "aws_lb_target_group" "nlb_tg_rabbitmq" {
+resource "oci_load_balancer" "lb_rabbitmq" {
   depends_on = [
     null_resource.install_haproxy
   ]
 
-  name        = "${local.product}-${var.global.environment}-TG-RabbitMQ-HA-${var.input.version}"
-  port        = 5672
-  protocol    = "TCP"
-  vpc_id      = var.global.vpc_id
-  
-  health_check {
-    interval            = 5
+  compartment_id = var.global.compartment_id
+  display_name   = "${local.product}-${var.global.environment}-LB-RabbitMQ-HA-${var.input.version}"
+  shape          = "flexible"
+  subnet_ids     = var.global.availability_domains
+  is_private     = true
+
+  shape_details {
+    maximum_bandwidth_in_mbps = 100
+    minimum_bandwidth_in_mbps = 10
+  }
+
+  freeform_tags = {
+    Name         = "${local.product}-${var.global.environment}-LB-RabbitMQ-HA-${var.input.version}"
+    Environment  = var.global.environment
+    Module       = local.product
+    Team         = var.global.team
+  }
+}
+
+resource "oci_load_balancer_backend_set" "lb_backend_set_rabbitmq" {
+  depends_on = [
+    oci_load_balancer.lb_rabbitmq
+  ]
+
+  name             = "${local.product}-${var.global.environment}-BS-RabbitMQ-HA-${var.input.version}"
+  load_balancer_id = oci_load_balancer.lb_rabbitmq.id
+  policy           = "ROUND_ROBIN"
+
+  health_checker {
+    port                = 5672
     protocol            = "TCP"
-    timeout             = 5
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
-  }
-
-  tags = {
-    Name         = "${local.product}-${var.global.environment}-TG-RabbitMQ-HA-${var.input.version}"
-    Environment  = var.global.environment
-    Module       = local.product
-    Team         = var.global.team
+    interval_ms         = 5000
+    timeout_in_millis   = 5000
+    retries             = 2
   }
 }
 
-resource "aws_lb_target_group_attachment" "nlb_tg_attachment_rabbitmq" {
+resource "oci_load_balancer_backend" "lb_backend_rabbitmq" {
   depends_on = [
-    aws_lb_target_group.nlb_tg_rabbitmq
+    oci_load_balancer_backend_set.lb_backend_set_rabbitmq
   ]
 
-  for_each         = aws_instance.ec2_rabbitmq
-  target_group_arn = aws_lb_target_group.nlb_tg_rabbitmq.arn
-  target_id        = each.value.id
+  for_each         = oci_core_instance.compute_rabbitmq
+  backendset_name  = oci_load_balancer_backend_set.lb_backend_set_rabbitmq.name
+  load_balancer_id = oci_load_balancer.lb_rabbitmq.id
+  ip_address       = each.value.private_ip
+  port             = 5672
+  backup           = false
+  drain            = false
+  offline          = false
+  weight           = 1
 }
 
-resource "aws_lb_target_group" "nlb_tg_rabbitmq_management" {
+resource "oci_load_balancer_backend_set" "lb_backend_set_rabbitmq_management" {
   depends_on = [
-    aws_lb_target_group_attachment.nlb_tg_attachment_rabbitmq
+    oci_load_balancer_backend.lb_backend_rabbitmq
   ]
 
-  name        = "${local.product}-${var.global.environment}-TG-RabbitMQ-HA-MGMT-${var.input.version}"
-  port        = 15672
-  protocol    = "TCP"
-  vpc_id      = var.global.vpc_id
-  
-  health_check {
-    interval            = 5
+  name             = "${local.product}-${var.global.environment}-BS-RabbitMQ-HA-MGMT-${var.input.version}"
+  load_balancer_id = oci_load_balancer.lb_rabbitmq.id
+  policy           = "ROUND_ROBIN"
+
+  health_checker {
+    port                = 15672
     protocol            = "TCP"
-    timeout             = 5
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
-  }
-
-  tags = {
-    Name         = "${local.product}-${var.global.environment}-TG-RabbitMQ-HA-MGMT-${var.input.version}"
-    Environment  = var.global.environment
-    Module       = local.product
-    Team         = var.global.team
+    interval_ms         = 5000
+    timeout_in_millis   = 5000
+    retries             = 2
   }
 }
 
-resource "aws_lb_target_group_attachment" "nlb_tg_attachment_rabbitmq_management" {
+resource "oci_load_balancer_backend" "lb_backend_rabbitmq_management" {
   depends_on = [
-    aws_lb_target_group.nlb_tg_rabbitmq_management
+    oci_load_balancer_backend_set.lb_backend_set_rabbitmq_management
   ]
 
-  for_each         = aws_instance.ec2_rabbitmq
-  target_group_arn = aws_lb_target_group.nlb_tg_rabbitmq_management.arn
-  target_id        = each.value.id
+  for_each         = oci_core_instance.compute_rabbitmq
+  backendset_name  = oci_load_balancer_backend_set.lb_backend_set_rabbitmq_management.name
+  load_balancer_id = oci_load_balancer.lb_rabbitmq.id
+  ip_address       = each.value.private_ip
+  port             = 15672
+  backup           = false
+  drain            = false
+  offline          = false
+  weight           = 1
 }
 
-resource "aws_lb" "nlb_rabbitmq" {
+resource "oci_load_balancer_listener" "lb_listener_rabbitmq" {
   depends_on = [
-    aws_lb_target_group_attachment.nlb_tg_attachment_rabbitmq_management
+    oci_load_balancer_backend.lb_backend_rabbitmq_management
   ]
 
-  name               = "${local.product}-${var.global.environment}-NLB-RabbitMQ-HA-${var.input.version}"
-  internal           = true
-  load_balancer_type = "network"
-  subnets            = var.global.availability_zones
-  enable_deletion_protection = var.input.termination_protection
-
-  tags = {
-    Name         = "${local.product}-${var.global.environment}-NLB-RabbitMQ-HA-${var.input.version}"
-    Environment  = var.global.environment
-    Module       = local.product
-    Team         = var.global.team
-  }
+  load_balancer_id         = oci_load_balancer.lb_rabbitmq.id
+  name                     = "${local.product}-${var.global.environment}-Listener-RabbitMQ-HA-${var.input.version}"
+  default_backend_set_name = oci_load_balancer_backend_set.lb_backend_set_rabbitmq.name
+  port                     = 5672
+  protocol                 = "TCP"
 }
 
-resource "aws_lb_listener" "nlb_listener_rabbitmq" {
+resource "oci_load_balancer_listener" "lb_listener_rabbitmq_management" {
   depends_on = [
-    aws_lb.nlb_rabbitmq
+    oci_load_balancer_listener.lb_listener_rabbitmq
   ]
 
-  load_balancer_arn = aws_lb.nlb_rabbitmq.arn
-  port              = 5672
-  protocol          = "TCP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.nlb_tg_rabbitmq.arn
-  }
-}
-
-resource "aws_lb_listener" "nlb_listener_rabbitmq_management" {
-  depends_on = [
-    aws_lb_listener.nlb_listener_rabbitmq
-  ]
-
-  load_balancer_arn = aws_lb.nlb_rabbitmq.arn
-  port              = 15672
-  protocol          = "TCP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.nlb_tg_rabbitmq_management.arn
-  }
+  load_balancer_id         = oci_load_balancer.lb_rabbitmq.id
+  name                     = "${local.product}-${var.global.environment}-Listener-RabbitMQ-HA-MGMT-${var.input.version}"
+  default_backend_set_name = oci_load_balancer_backend_set.lb_backend_set_rabbitmq_management.name
+  port                     = 15672
+  protocol                 = "TCP"
 }
 
 locals {
   output = {
-    nlb_dns_name = aws_lb.nlb_rabbitmq.dns_name
-    ips          = local.params.ips
-    haproxy_cfg  = local.params.haproxy_cfg
+    lb_ip_address = oci_load_balancer.lb_rabbitmq.ip_address_details[0].ip_address
+    ips           = local.params.ips
+    haproxy_cfg   = local.params.haproxy_cfg
   }
 }
 
 output "input_variables" {
   depends_on = [
-    aws_lb_listener.nlb_listener_rabbitmq
+    oci_load_balancer_listener.lb_listener_rabbitmq_management
   ]
   value = var.input
 }
 
 output "output_variables" {
   depends_on = [
-    aws_lb_listener.nlb_listener_rabbitmq
+    oci_load_balancer_listener.lb_listener_rabbitmq_management
   ]
   value = local.output
 }

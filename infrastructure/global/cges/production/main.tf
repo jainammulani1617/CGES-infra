@@ -1,23 +1,23 @@
 terraform {
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 4.67"
+    oci = {
+      source  = "oracle/oci"
+      version = "~> 6.26.0"
     }
   }
 
   required_version = ">= 1.2.0"
 }
 
-provider "aws" {
+provider "oci" {
   region = var.global.region
 }
 
 module "redis" {
-  source = "../../../modules/redis/v1"
+  source = "../../../modules/redis/v3"
   global = var.global
   input = {
-    instance_type = "t3a.medium"
+    instance_type = "VM.Standard.E4.Flex"
     password      = "cygnetaspredisclusterproduction"
     volume_size   = 24
     disable_api_termination = true
@@ -26,12 +26,12 @@ module "redis" {
 }
 
 module "rabbitmq_ha" {
-  source = "../../../modules/rabbitmq_single_node_ha/v3"
+  source = "../../../modules/rabbitmq_single_node_ha/v4"
   global = var.global
   input = {
     product                               = null
-    instance_type                         = "r6a.xlarge"
-    standby_instance_type                 = "r6a.large"
+    instance_type                         = "VM.Standard.E4.Flex"
+    standby_instance_type                 = "VM.Standard.E4.Flex"
     termination_protection                = false
     initial_configuration_path            = "rabbitmq/initial_configuration.json"
     linux_configuration_path              = "../../../common/linux/create_swap_memory.yaml"

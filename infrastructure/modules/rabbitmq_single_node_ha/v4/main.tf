@@ -263,21 +263,21 @@ resource "null_resource" "configure_rabbitmq" {
   }
 }
 
-resource "null_resource" "install_cloudwatch_agent" {
+resource "null_resource" "install_monitoring_agent" {
   depends_on = [
     null_resource.configure_rabbitmq
   ]
   triggers = {
-    file_hash = filesha1("${path.root}/${var.input.install_cloudwatch_agent_path}")
+    file_hash = filesha1("${path.root}/${var.input.install_monitoring_agent_path}")
   }
   provisioner "local-exec" {
-    command = "ansible-playbook -i ${local.params.ips}, ${path.root}/${var.input.install_cloudwatch_agent_path} --extra-vars \"target=${local.params.ips} cloudwatch_agent_config_path=${local.rabbitmq.cloudwatch_agent_config_path}\""
+    command = "ansible-playbook -i ${local.params.ips}, ${path.root}/${var.input.install_monitoring_agent_path} --extra-vars \"target=${local.params.ips} monitoring_agent_config_path=${local.rabbitmq.monitoring_agent_config_path}\""
   }
 }
 
 resource "local_file" "prepare_haproxy_cfg_output" {
   depends_on = [
-    null_resource.install_cloudwatch_agent
+    null_resource.install_monitoring_agent
   ]
 
   content = local.params.haproxy_cfg

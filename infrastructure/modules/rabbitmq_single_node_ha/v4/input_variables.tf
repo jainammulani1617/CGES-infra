@@ -7,9 +7,9 @@ variable "input" {
     volume_size                   = number
     termination_protection        = bool
     initial_configuration_path    = string
-    cloudwatch_iam_profile        = string
+    # cloudwatch_iam_profile        = string
     linux_configuration_path      = string
-    install_cloudwatch_agent_path = string
+    install_monitoring_agent_path = string
     plugin_version            = object({
       delayed_message_exchange  = string
     })

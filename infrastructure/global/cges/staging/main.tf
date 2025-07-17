@@ -1,3 +1,8 @@
+variable "global" {
+  description = "Global configuration object"
+  type        = any
+}
+
 terraform {
   required_providers {
     aws = {
@@ -34,20 +39,20 @@ module "rabbitmq_ha_v4" {
   }
 }
 
-module "redis" {
-  source = "../../../modules/redis/v3"
-  global = var.global
-  input = {
-    product                       = null
-    instance_type                 = "t3a.small"
-    password                      = "cygnetaspredisstaging"
-    linux_configuration_path      = "../../../common/linux/create_swap_memory.yaml"
-    install_cloudwatch_agent_path = "../../../common/cloudwatchagent/install_cloudwatch_agent.yaml"
-    volume_size                   = 50
-    cloudwatch_iam_profile        = var.global.cloudwatch_role
-    termination_protection        = false
-  }
-}
+# module "redis" {
+#   source = "../../../modules/redis/v3"
+#   global = var.global
+#   input = {
+#     product                       = null
+#     instance_type                 = "t3a.small"
+#     password                      = "cygnetaspredisstaging"
+#     linux_configuration_path      = "../../../common/linux/create_swap_memory.yaml"
+#     install_cloudwatch_agent_path = "../../../common/cloudwatchagent/install_cloudwatch_agent.yaml"
+#     volume_size                   = 50
+#     cloudwatch_iam_profile        = var.global.cloudwatch_role
+#     termination_protection        = false
+#   }
+# }
 
 output "rabbitmq_ha_v4_output" {
   depends_on = [
@@ -56,9 +61,9 @@ output "rabbitmq_ha_v4_output" {
   value = module.rabbitmq_ha_v4
 }
 
-output "redis_output" {
-  depends_on = [
-    module.redis
-  ]
-  value = module.redis
-}
+# output "redis_output" {
+#   depends_on = [
+#     module.redis
+#   ]
+#   value = module.redis
+# }

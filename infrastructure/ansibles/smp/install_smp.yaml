@@ -1,0 +1,444 @@
+---
+- name: Install SMP on Ubuntu
+  hosts: "{{target_hosts}}"
+  become: true
+  serial: 1  # Run one server at a time
+  order: inventory  # Execute in the order listed in inventory
+  vars:
+    file_max_value: 64000
+    nfs_user_password: "Admin$$123"
+  tasks:
+    # Set system configuration
+    - name: Update sysctl.conf to make changes persistent (fs.file-max)
+      lineinfile:
+        path: /etc/sysctl.conf
+        line: "fs.file-max={{ file_max_value }}"
+        state: present
+      become: true
+
+    - name: Load sysctl settings from the file
+      command: sysctl --system
+      changed_when: false
+      become: true
+
+    # Install JDK
+    - name: Install OpenJDK
+      apt:
+        name: openjdk-{{ jdk_version }}-jdk
+        state: present
+
+    - name: Set openjdk version variable
+      become: true
+      shell: java -version
+      register: java_version
+
+    - name: Print java version
+      debug: 
+        var: java_version
+
+    # Create directory structure
+    - name: Ensure /opt directory exists
+      file:
+        path: /opt
+        state: directory
+
+    - name: Ensure /opt/tmp directory exists
+      file:
+        path: /opt/tmp
+        state: directory
+
+    - name: Ensure /opt/tomcat directory exists
+      file:
+        path: /opt/tomcat
+        state: directory
+
+      # Move migration script into shared folder to be shared by multiple instances of smp
+    - name: Create {{nfs_folder}}.cred file - {{nfs_user_password}}
+      blockinfile:
+        path: /opt/{{nfs_folder}}.cred
+        create: yes
+        block: |
+          user={{nfs_user}}
+          password={{nfs_user_password}}
+          domain={{nfs_user_domain}}
+    
+    - name: Ensure /opt/{{nfs_folder}} directory exists. For NFS mounting.
+      file:
+        path: /opt/{{nfs_folder}}
+        state: directory
+        
+    - name: Install cifs-utils
+      apt:
+        name: cifs-utils
+        state: present
+        update_cache: yes
+        
+    - name: Add NFS mounting details in /etc/fstab file.
+      blockinfile:
+        path: /etc/fstab
+        state: present
+        marker: "## ANSIBLE MANAGED BLOCK "
+        block: |
+          //{{nfs_server}}/{{nfs_folder}} /opt/{{nfs_folder}} cifs uid=0,credentials=/opt/{{nfs_folder}}.cred,iocharset=utf8,noperm 0 0
+
+    - name: Mount network file store
+      command: mount -a
+
+    - name: Ensure {{smp_datapath}} directory exists. For NFS mounting.
+      file:
+        path: "{{smp_datapath}}"
+        state: directory
+        
+    # Install Tomcat
+    - name: For security purposes, Tomcat should run under a separate, unprivileged user. Create tomcat user.
+      shell: |
+          id -u tomcat || sudo useradd -m -d /opt/tomcat -U -s /bin/false tomcat
+      become: true
+
+    - name: Download Apache Tomcat {{tomcat_sub_version}}
+      get_url:
+        url: "https://archive.apache.org/dist/tomcat/tomcat-{{tomcat_major_version}}/v{{tomcat_sub_version}}/bin/apache-tomcat-{{tomcat_sub_version}}.tar.gz"
+        dest: "/opt/tmp/apache-tomcat-{{tomcat_sub_version}}.tar.gz"
+        mode: '0644'
+
+    - name: Extract Tomcat archive to /opt/tomcat
+      unarchive:
+        src: "/opt/tmp/apache-tomcat-{{tomcat_sub_version}}.tar.gz"
+        dest: "/opt/tomcat"
+        remote_src: yes
+        extra_opts: ["--strip-components=1"]
+
+    - name: Set ownership of tomcat directory to tomcat & system user
+      file:
+        path: /opt/tomcat/
+        state: directory
+        owner: tomcat
+        group: "{{ ansible_user_group }}"
+        recurse: yes
+
+    - name: Ensure execution permissions for Tomcat scripts
+      file:
+        path: /opt/tomcat/bin
+        state: directory
+        mode: '0755'
+        recurse: yes
+
+    - name: Add user details for gaining manager and host manager access in tomcat-users.xml
+      blockinfile:
+        path: /opt/tomcat/conf/tomcat-users.xml
+        insertbefore: "</tomcat-users>"
+        marker: "<!-- ANSIBLE MANAGED BLOCK -->"
+        block: |
+          <role rolename="manager-gui" />
+          <user username="manager" password="{{manager_password}}" roles="manager-gui" />
+          <role rolename="admin-gui" />
+          <user username="admin" password="{{admin_password}}" roles="manager-gui,admin-gui" />
+
+    #- name: Ensure the RemoteAddrValve is commented out to remove the restriction for the Manager page 1
+    #  replace:
+    #    path: /opt/tomcat/webapps/manager/META-INF/context.xml
+    #    regexp: '(<Valve className="org.apache.catalina.valves.RemoteAddrValve")'
+    #    replace: |
+    #      <!-- \1
+
+    #- name: Ensure the RemoteAddrValve is commented out to remove the restriction for the Manager page 2
+    #  replace:
+    #    path: /opt/tomcat/webapps/manager/META-INF/context.xml
+    #    regexp: '(allow="127\.\d+\.\d+\.\d+|::1|0:0:0:0:0:0:0:1" />)'
+    #    replace: |
+    #      \1 -->
+
+    - name: Create tomcat service unit file
+      template:
+        src: tomcat.service.template
+        dest: /etc/systemd/system/tomcat.service
+
+    - name: Reload system services
+      command: systemctl daemon-reload
+
+    #- name: Check UFW status
+    #  command: ufw status
+    #  register: ufw_status
+    #  changed_when: false  # Avoid unnecessary task changes
+
+    #- name: Allow Tomcat port (8080) in UFW
+    #  command: ufw allow 8080
+
+    #- name: Ensure UFW is enabled in configuration
+    #  lineinfile:
+    #    path: /etc/ufw/ufw.conf
+    #    regexp: '^ENABLED='
+    #    line: 'ENABLED=yes'
+    #    backup: yes
+
+    #- name: Reload UFW
+    #  command: ufw reload
+
+    # Enable iptables and allow application Ports
+    - name: Install iptables and iptables-persistent
+      apt:
+        name:
+          - iptables
+          - iptables-persistent
+        state: present
+        update_cache: yes
+
+    - name: Allow SSH (port 22)
+      ansible.builtin.command: iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+
+    - name: Allow SSH (port 7022)
+      ansible.builtin.command: iptables -A INPUT -p tcp --dport 7022 -j ACCEPT
+
+    - name: Allow HTTP
+      ansible.builtin.command: iptables -A INPUT -p tcp --dport 8080 -j ACCEPT
+
+    - name: Allow established and related connections
+      ansible.builtin.command: >
+        iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+    - name: Drop all other incoming traffic
+      ansible.builtin.command: iptables -P INPUT DROP
+
+    - name: Save iptables rules
+      ansible.builtin.command: netfilter-persistent save
+      
+    - name: Start tomcat service
+      systemd:
+        name: tomcat
+        enabled: yes
+        state: started
+
+    - name: Enable tomcat service
+      shell: systemctl enable tomcat
+
+    # Install Phoss SMP
+    - name: Download phoss-smp WAR file
+      get_url:
+        url: "https://github.com/phax/phoss-smp/releases/download/phoss-smp-parent-pom-{{ smp_version }}/phoss-smp-webapp-sql-{{ smp_version }}.war"
+        dest: "/opt/tmp/phoss-smp-webapp-sql-{{ smp_version }}.war"
+        mode: '0644'
+
+    - name: Move WAR file to Tomcat webapps directory
+      command: mv /opt/tmp/phoss-smp-webapp-sql-{{ smp_version }}.war /opt/tomcat/webapps/phoss-smp.war
+      register: result_smpdeployed
+
+    - name: Create /opt/smp directory if it does not exist & ensure tomcat & owner group has rwx permissions on /opt/smp
+      file:
+        path: /opt/smp
+        state: directory
+        mode: '0770'
+        owner: tomcat
+        group: "{{ ansible_user_group }}"
+        recurse: yes
+
+    - name: Pause to debug or verify before next change
+      pause:
+        seconds: 15
+
+    - name: Set ownership of tomcat directory to tomcat & system user
+      file:
+        path: /opt/tomcat/
+        state: directory
+        owner: tomcat
+        group: "{{ ansible_user_group }}"
+        recurse: yes
+
+    - name: Copy peppol certificate
+      copy:
+        src: "{{ peppol_certificate_name }}"
+        dest: "/opt/tomcat/webapps/phoss-smp/WEB-INF/classes/keystore/"
+        owner: tomcat
+        group: "{{ ansible_user_group }}"
+        mode: '0755'
+      become: true
+
+    - name: Pause to debug or verify before next change
+      pause:
+        seconds: 15
+
+    - name: Replace sml.smpid value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^sml.smpid='
+        line: 'sml.smpid={{ smp_id }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace webapp.testversion value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^webapp.testversion='
+        line: 'webapp.testversion={{ webapp_testversion }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace smp.forceroot value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^smp.forceroot ='
+        line: 'smp.forceroot = {{ smp_forceroot }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace global.production value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^global.production ='
+        line: 'global.production = {{ smp_production }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace smp.directory.integration.enabled value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^#smp.directory.integration.enabled='
+        line: 'smp.directory.integration.enabled= {{ smp_integration }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace webapp.datapath value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^webapp.datapath ='
+        line: 'webapp.datapath = {{ smp_datapath }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace smp.publicurl value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^#smp.publicurl = '
+        line: 'smp.publicurl = {{ smp_publicurl }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace smp.rest.log.exceptions value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^smp.rest.log.exceptions='
+        line: 'smp.rest.log.exceptions= {{ smp_exceptions }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace pdclient.keystore.type value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^pdclient.keystore.type'
+        line: 'pdclient.keystore.type         = {{ smp_certtype }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace pdclient.keystore.path value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^pdclient.keystore.path'
+        line: 'pdclient.keystore.path         = {{ smp_certpath }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace pdclient.keystore.password value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^pdclient.keystore.password'
+        line: 'pdclient.keystore.password     = {{ smp_certpass }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace pdclient.keystore.key.alias value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^pdclient.keystore.key.alias'
+        line: 'pdclient.keystore.key.alias    = {{ smp_certalias }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace pdclient.keystore.key.password value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^pdclient.keystore.key.password'
+        line: 'pdclient.keystore.key.password = {{ smp_certpass }}'
+      when: result_smpdeployed is succeeded
+        
+    - name: Replace smp.keystore.type value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^smp.keystore.type'
+        line: 'smp.keystore.type              = {{ smp_certtype }}'
+      when: result_smpdeployed is succeeded
+        
+    - name: Replace smp.keystore.path value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^smp.keystore.path'
+        line: 'smp.keystore.path              = {{ smp_certpath }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace smp.keystore.password value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^smp.keystore.password'
+        line: 'smp.keystore.password          = {{ smp_certpass }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace smp.keystore.key.alias value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^smp.keystore.key.alias'
+        line: 'smp.keystore.key.alias         = {{ smp_certalias }}'
+      when: result_smpdeployed is succeeded
+        
+    - name: Replace smp.keystore.key.password value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^smp.keystore.key.password'
+        line: 'smp.keystore.key.password      = {{ smp_certpass }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace MySQL example value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^# MySQL example'
+        line: '# PostgreSQL Configuration'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace jdbc.driver value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^jdbc.driver ='
+        line: 'jdbc.driver = org.postgresql.Driver'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace jdbc.url value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^jdbc.url ='
+        line: 'jdbc.url = {{ smp_jdbcurl }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace jdbc.user value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^jdbc.user ='
+        line: 'jdbc.user = {{ smp_dbuser }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace jdbc.password value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^jdbc.password ='
+        line: 'jdbc.password = {{ smp_dbpassword }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Replace target-database value with new one
+      lineinfile:
+        path: /opt/tomcat/webapps/phoss-smp/WEB-INF/classes/application.properties
+        regexp: '^target-database ='
+        line: 'target-database = {{ smp_targetdatabase }}'
+      when: result_smpdeployed is succeeded
+
+    - name: Add dns mapping in server.xml
+      blockinfile:
+        path: /opt/tomcat/conf/server.xml
+        insertbefore: "<Host name="
+        marker: "<!-- ANSIBLE MANAGED BLOCK -->"
+        block: |
+          <Host name="{{ smp_serverdomain }}" appBase="webapps" unpackWARs="true" autoDeploy="true">
+              <Context path="" docBase="phoss-smp" />
+              <Alias>{{ smp_admin_serverdomain }}</Alias>
+              <Alias>{{ smp_serverip }}</Alias>
+              <Alias>{{ smp_edeliverydomain }}</Alias>
+              <Valve className="org.apache.catalina.valves.AccessLogValve" directory="logs"
+                    prefix="smp_access_log" suffix=".txt"
+                    pattern="%h %l %u %t &quot;%r&quot; %s %b" />
+          </Host>
+          
+    - name: Restart tomcat services
+      command: systemctl restart tomcat

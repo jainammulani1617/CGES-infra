@@ -1,0 +1,42 @@
+---
+- hosts: '{{ target }}'
+  become: yes
+  tasks:
+    - name: Ensure the file exists
+      file:
+        path: /etc/rabbitmq/rabbitmq.conf
+        state: touch
+
+    - name: Set default port in rabbitmq config
+      lineinfile:
+        path: /etc/rabbitmq/rabbitmq.conf
+        line: "listeners.tcp.default = 5673"
+
+    - name: Set default management port in rabbitmq config
+      lineinfile:
+        path: /etc/rabbitmq/rabbitmq.conf
+        line: "management.tcp.port = 15673"
+
+    - name: Set consumer timeout in rabbitmq config
+      lineinfile:
+        path: /etc/rabbitmq/rabbitmq.conf
+        line: "consumer_timeout = 86400000"
+
+    - name: Set max_message_size in rabbitmq config
+      lineinfile:
+        path: /etc/rabbitmq/rabbitmq.conf
+        line: "max_message_size = 536870912"
+
+    - name: Set vm_memory_high_watermark.relative in rabbitmq config
+      lineinfile:
+        path: /etc/rabbitmq/rabbitmq.conf
+        line: "vm_memory_high_watermark.relative = 0.8"
+
+    - name: Restart RabbitMQ service.
+      become: true
+      command: "systemctl restart rabbitmq-server"
+
+    - name: Import rabbitmq initial configuration
+      become: true
+      shell: 
+        cmd: "curl -u guest:guest -H \"Content-Type:application/json\" -X POST -T /home/ubuntu/initial_configuration.json http://localhost:15673/api/definitions"

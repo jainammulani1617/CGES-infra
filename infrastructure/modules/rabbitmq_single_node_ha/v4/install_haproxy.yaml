@@ -1,0 +1,30 @@
+---
+- hosts: '{{ target }}'
+  become: true
+  vars:
+    haproxy_destination_cfg_file: /etc/haproxy/haproxy.cfg
+  tasks:
+    - name: Install HAProxy
+      apt:
+        name: haproxy
+        update_cache: yes
+        state: latest
+
+    - name: Configure HAProxy
+      template:
+        src: "{{ haproxy_source_cfg_file }}"
+        dest: "{{ haproxy_destination_cfg_file }}"
+      notify: Reload HAProxy
+
+    - name: Start HAProxy service
+      systemd:
+        name: haproxy
+        enabled: yes
+        state: started
+
+  handlers:
+    - name: Reload HAProxy
+      become: true
+      service:
+        name: haproxy
+        state: reloaded

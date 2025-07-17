@@ -1,0 +1,1 @@
+v4 - Script to create 2 instances of single node rabbitmq, one for primary and second for backup along with upgrade mechanism

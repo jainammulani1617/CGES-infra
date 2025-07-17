@@ -1,0 +1,5 @@
+---
+- hosts: '{{ target }}'
+  tasks:  
+    - name: Create redis cluster
+      shell: redis-cli --cluster create {{ redis_cluster_details }} -a {{ redis_password }} --cluster-yes --cluster-replicas 1

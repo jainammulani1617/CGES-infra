@@ -1,0 +1,15 @@
+[Unit]
+Description=This service moves the files from the Oxalis inbound folder to the NFS shared path.
+After=network.target
+
+[Service]
+User=root
+Group=root
+
+ExecStart=/opt/.oxalis/move-inbound-files.sh 
+
+RestartSec=10
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

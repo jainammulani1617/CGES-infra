@@ -1,0 +1,47 @@
+---
+- hosts: '{{ target }}'
+  tasks:
+    - name: Change timezone to IST
+      become: true
+      shell: timedatectl set-timezone Asia/Kolkata      
+
+    - name: Get keyring details for redis
+      become: true
+      shell: curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor --batch --yes -o /usr/share/keyrings/redis-archive-keyring.gpg
+
+    - name: Add redis to install list
+      become: true
+      shell: echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+
+    - name : Update packages
+      become: true
+      shell: apt-get update
+   
+    - name : Install redis
+      become: true
+      shell: apt-get install -y redis
+
+    - name: Edit redis.conf
+      become: true
+      lineinfile:
+        name: "/etc/redis/redis.conf"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      with_items:
+        - {regexp: '^bind 127.0.0.1', line: "bind {{ ansible_default_ipv4.address }} 127.0.0.1 "}
+        - {regexp: '^# requirepass foobared', line: "requirepass \"{{ redis_password }}\""}
+        - {regexp: '^# masterauth <master-password>', line: "masterauth \"{{ redis_password }}\""}
+        - {regexp: '^# cluster-enabled ', line: "cluster-enabled yes"}
+        - {regexp: '^# cluster-config-file ', line: "cluster-config-file nodes.conf"}
+        - {regexp: '^# cluster-node-timeout ', line: "cluster-node-timeout 15000"}
+        - {regexp: '^appendonly no', line: "appendonly yes"}
+
+    - name: Restart redis-server
+      become: true
+      service:
+        name: redis-server
+        state: restarted
+
+    - name: Enable redis-server
+      become: true
+      shell: systemctl enable redis-server.service

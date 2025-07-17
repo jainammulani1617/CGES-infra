@@ -1,0 +1,21 @@
+---
+- hosts: '{{ target }}'
+  tasks:
+    - name: Download latest cloudwatch agent
+      become: true
+      shell: 
+        cmd: "wget https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb"
+      
+    - name: Install debian package
+      become: true
+      command: "dpkg -i -E ./amazon-cloudwatch-agent.deb"
+
+    - name: Copy config file
+      become: true
+      ansible.builtin.copy:
+        src: 'config.json'
+        dest: '{{ cloudwatch_agent_config_path }}'
+
+    - name: Reload the config file
+      become: true
+      command: "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:{{ cloudwatch_agent_config_path }} -s"

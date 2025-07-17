@@ -1,0 +1,67 @@
+1) Create RSA Key Pairs for connecting to bastion host
+Name: ASP-GSP-Stag-Key-BastionHost
+Type: RSA
+Format: .pem (OpenSSH)
+
+
+2) Create IAM role for bastion host
+Type: AWS service
+UseCase: EC2
+Name: ASP-GSP-Stag-Role-BastionHost
+Permission: AdministratorAccess, AmazonEKSAdminPolicy, AmazonS3FullAccess, AmazonSSMManagedInstanceCore, CloudWatchAgentServerPolicy
+
+
+3) Create SecurityGroup for bastion host
+Name: ASP-GSP-Stag-SecurityGroup-BastionHost
+Inbound rules: Add ssh for following ips 182.72.168.34/32,61.12.66.2/32,103.158.108.3/32,14.97.193.214/32,202.131.107.14/32,202.131.112.106/32,182.71.119.142/32,202.131.101.34/32,14.98.119.214/32
+Tags: Name => ASP-GSP-Stag-SecurityGroup-BastionHost
+
+
+4) Create EC2 for bastion host
+Name: ASP-GSP-Stag-EC2-BastionHost-01
+SecurityGroup: use the one created in above steps
+Role: use the one created in above steps
+Storage: 64GB => gp3 => disable on termination => enabled encryption with default aws key
+
+
+5) Create Elastic IP for bastion host
+Tags: Name => ASP-GSP-Stag-EIP-BastionHost
+And associate with above EC2 instance
+
+
+6) Connect to bastion host and configure ssh for other ec2
+
+Copy the developer pem file to /home/ubuntu/.ssh 
+chmod 400 ASP-GSP-Stag-Key-Developer.pem
+Create new config file with below content:
+user ubuntu
+IdentityFile ~/.ssh/ASP-GSP-Stag-Key-Developer.pem
+
+Copy the developer pem file to /etc/ansible 
+chmod 400 ASP-GSP-Stag-Key-Developer.pem
+Create new ansible.cfg with below content:
+host_key_checking = False
+private_key_file = /home/ubuntu/IN-Cygnet-ASP-GSP-Production-Key-Developer.pem
+
+
+7) Update package manager and install ansible
+sudo apt-get update
+sudo apt install ansible
+Copy infrastructure directory from CARCH01/Deployment
+
+
+8) Add swap memory and install bastion packages
+ansible-playbook -i localhost infrastructure/common/linux/create_swap_memory.yaml --extra-vars "target=localhost"
+ansible-playbook -i localhost infrastructure/common/bastion/install-packages.yaml --extra-vars "target=localhost"
+
+
+9) Create /etc/ansible/ansible.cfg
+Add the following content:
+[defaults]
+host_key_checking = False
+
+
+10) Install Jenkins Slave using terraform module
+
+
+11) Install EKS using terraform module

@@ -1,0 +1,52 @@
+---
+- hosts: '{{ target }}'
+  tasks:
+    - name: Update package indices
+      become: true
+      shell: apt-get update -y
+
+    - name: Check if rabbitmq-server is installed
+      ansible.builtin.shell: dpkg -l | grep rabbitmq-server
+      register: rabbitmq_installed
+      failed_when: false
+      changed_when: false
+
+    - name: Stop rabbitmq-server if installed
+      become: true
+      ansible.builtin.service:
+        name: rabbitmq-server
+        state: stopped
+      when: rabbitmq_installed.rc == 0
+
+    - name: Check if epmd binary exists
+      ansible.builtin.stat:
+        path: /usr/bin/epmd
+      register: epmd_check
+
+    - name: Stop epmd if binary exists
+      become: true
+      ansible.builtin.shell: killall epmd
+      when: epmd_check.stat.exists
+      ignore_errors: true
+
+    - name: Uninstall RabbitMQ and Erlang
+      become: true
+      shell: apt-get purge -y rabbitmq-server && apt-get purge -y erlang*
+    
+    - name: Remove Residual Config & Data
+      become: true
+      shell: rm -rf /etc/rabbitmq && rm -rf /var/lib/rabbitmq && rm -rf /var/log/rabbitmq
+
+    - name: Remove Shared Dependencies
+      become: true
+      shell: apt-get autoremove -y && apt-get autoclean
+    
+    - name: Check for Leftover Files
+      become: true
+      shell: find / -name '*rabbitmq*' -o -name '*erlang*'
+      
+    - name: Reboot the server and wait for it to come back
+      become: true
+      ansible.builtin.reboot:
+        reboot_timeout: 600      # Wait up to 10 minutes for reboot
+        test_command: echo 'Wait until SSH is ready'     # Optional: can be any simple command to test SSH

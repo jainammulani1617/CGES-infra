@@ -1,0 +1,154 @@
+---
+- hosts: '{{ target }}'
+  tasks:
+    - name: Step 1 - Ensure the apt libraries are updated
+      become: true
+      shell: apt update
+      
+    - name: Step 1 - Install gnupg
+      become: true
+      shell: apt install -y gnupg software-properties-common
+
+    - name: Step 2 - Install the HashiCorp GPG key
+      become: true
+      shell: 
+        cmd: wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg
+
+    - name: Step 3 - Verify the key's fingerprint.
+      become: true
+      shell: gpg --no-default-keyring --keyring /usr/share/keyrings/hashicorp-archive-keyring.gpg --fingerprint
+
+    - name: Step 4 - Add the official HashiCorp repository to your system
+      become: true
+      shell: echo deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main | sudo tee /etc/apt/sources.list.d/hashicorp.list
+
+    - name: Step 5 - Download the package information from HashiCorp
+      become: true
+      shell: apt update
+
+    - name: Step 6 - Install Terraform from the new repository
+      become: true
+      shell: apt install terraform
+
+
+    - name: Step 1 - Install or update the latest version of the AWS CLI
+      become: true
+      shell: 
+        cmd: curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+
+    - name: Step 2 - Install unzip
+      become: true
+      shell: apt install unzip
+
+    - name: Step 3 - Unzip awscliv2
+      become: true
+      shell: 
+        cmd: unzip -q -o awscliv2.zip
+
+    - name: Step 4 - Install aws cli
+      become: true
+      shell: ./aws/install --update
+            
+      
+    - name: Step 1 - Download aws-iam-authenticator
+      become: true
+      shell: 
+        cmd: curl -Lo aws-iam-authenticator https://github.com/kubernetes-sigs/aws-iam-authenticator/releases/download/v0.5.9/aws-iam-authenticator_0.5.9_linux_amd64
+
+    - name: Step 2 - Change permission
+      become: true
+      shell: 
+        cmd: chmod +x ./aws-iam-authenticator
+
+    - name: Step 3 - Install aws-iam-authenticator
+      become: true
+      shell: cp aws-iam-authenticator /usr/local/bin
+
+
+    - name: Step 1 - Create a Storage directory
+      become: true
+      shell: 
+        cmd: mkdir -p /Storage
+
+    - name: Step 2 - Change ownership
+      become: true
+      shell: 
+        cmd: chown -R ubuntu.ubuntu /Storage
+
+
+    - name: Step 1 - Install git binutils utilities
+      become: true
+      shell: apt -y install git binutils rustc cargo pkg-config libssl-dev
+
+    - name: Step 2 - Clone efs utilities
+      become: true
+      git:
+        repo: https://github.com/aws/efs-utils.git
+        dest: /Storage/efs-utils
+
+    - name: Step 3 - Build efs utilities
+      become: true
+      shell: 
+        chdir: /Storage/efs-utils
+        cmd: ./build-deb.sh
+
+    - name: Step 5 - Install efs utilities
+      become: true
+      shell: 
+        chdir: /Storage/efs-utils
+        cmd: apt -y install ./build/amazon-efs-utils*deb
+
+    - name: Step 1 - Install snapd
+      become: true
+      shell: apt install snapd
+
+    - name: Step 2 - Install kubectx
+      become: true
+      shell: snap install kubectx --classic
+
+    - name: Step 3 - Install kubectl
+      become: true
+      shell: snap install kubectl --classic
+    
+    - name: Step 4 - Install helm
+      become: true
+      shell: snap install helm --classic
+
+    - name: Step 5 - Install Krew
+      shell: set -x; cd "$(mktemp -d)" && OS="$(uname | tr '[:upper:]' '[:lower:]')" && ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')" && KREW="krew-${OS}_${ARCH}" && curl -fsSLO "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz" && tar zxvf "${KREW}.tar.gz" && ./"${KREW}" install krew
+
+    - name: Step 6 - Add Krew path to profile
+      lineinfile:
+        path: "/home/ubuntu/.profile"
+        line: export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
+
+    - name: Step 7 - Install Resource capacity
+      environment:
+        PATH: /home/ubuntu/.krew/bin:{{ ansible_env.PATH }}
+      shell: kubectl krew install resource-capacity
+
+
+    - name: Step 1 - Clone brew repository
+      git:
+        repo: https://github.com/Homebrew/brew
+        dest: /home/ubuntu/.homebrew
+
+    - name: Step 2 - Add Brew path to profile
+      lineinfile:
+        path: "/home/ubuntu/.profile"
+        line: export PATH="/home/ubuntu/.homebrew/bin:$PATH"
+
+    - name: Step 3 - Update brew
+      environment:
+        PATH: /home/ubuntu/.homebrew/bin:{{ ansible_env.PATH }}
+      shell: brew update --force --quiet
+
+    - name: Step 4 - Update brew permission
+      environment:
+        PATH: /home/ubuntu/.homebrew/bin:{{ ansible_env.PATH }}
+      shell: chmod -R go-w "$(brew --prefix)/share/zsh"
+
+    - name: Step 5 - Install k9s
+      environment:
+        PATH: /home/ubuntu/.homebrew/bin:{{ ansible_env.PATH }}
+      shell: brew install derailed/k9s/k9s

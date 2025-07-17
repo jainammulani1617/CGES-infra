@@ -1,0 +1,146 @@
+{
+	"users": [
+	  {
+		"name": "CygnetGSP",
+		"password_hash": "djgo0YNN2D3K9DlndPGhtxPrspGLCFEqEpe4XLzDD3w8zGHO",
+		"hashing_algorithm": "rabbit_password_hashing_sha256",
+		"tags": [
+		  "monitoring"
+		],
+		"limits": {}
+	  },
+	  {
+		"name": "CygnetASP",
+		"password_hash": "xzdInGo18juii+PMHDHAiTkYJd31zUtxz6skx495rFqL+aWi",
+		"hashing_algorithm": "rabbit_password_hashing_sha256",
+		"tags": [
+		  "monitoring"
+		],
+		"limits": {}
+	  },
+	  {
+		"name": "guest",
+		"password_hash": "LKmLQohAWvc/ocGlF4IOPFcJcNb9cKmA+cLR74J4c7maCrYi",
+		"hashing_algorithm": "rabbit_password_hashing_sha256",
+		"tags": [
+		  "administrator"
+		],
+		"limits": {}
+	  },
+	  {
+		"name": "CygnetAdmin",
+		"password_hash": "pTtnshEXsBeEA9yn9T18bq+wpGra0IldBnddyR+rjMadh/77",
+		"hashing_algorithm": "rabbit_password_hashing_sha256",
+		"tags": [
+		  "administrator"
+		],
+		"limits": {}
+	  }
+	],
+	"vhosts": [
+	  {
+		"name": "Direct_GSP"
+	  },
+	  {
+		"name": "Fanout_GSP"
+	  },
+	  {
+		"name": "Direct_ASP"
+	  },
+	  {
+		"name": "Fanout_ASP"
+	  }
+	],
+	"permissions": [
+	  {
+		"user": "CygnetGSP",
+		"vhost": "Direct_GSP",
+		"configure": ".*",
+		"write": ".*",
+		"read": ".*"
+	  },
+	  {
+		"user": "CygnetGSP",
+		"vhost": "Fanout_GSP",
+		"configure": ".*",
+		"write": ".*",
+		"read": ".*"
+	  },
+	  {
+		"user": "CygnetASP",
+		"vhost": "Direct_ASP",
+		"configure": ".*",
+		"write": ".*",
+		"read": ".*"
+	  },
+	  {
+		"user": "CygnetASP",
+		"vhost": "Fanout_ASP",
+		"configure": ".*",
+		"write": ".*",
+		"read": ".*"
+	  },
+	  {
+		"user": "CygnetAdmin",
+		"vhost": "Direct_GSP",
+		"configure": ".*",
+		"write": ".*",
+		"read": ".*"
+	  },
+	  {
+		"user": "CygnetAdmin",
+		"vhost": "Fanout_GSP",
+		"configure": ".*",
+		"write": ".*",
+		"read": ".*"
+	  },
+	  {
+		"user": "CygnetAdmin",
+		"vhost": "Direct_ASP",
+		"configure": ".*",
+		"write": ".*",
+		"read": ".*"
+	  },
+	  {
+		"user": "CygnetAdmin",
+		"vhost": "Fanout_ASP",
+		"configure": ".*",
+		"write": ".*",
+		"read": ".*"
+	  },
+	  {
+		"user": "guest",
+		"vhost": "Direct_GSP",
+		"configure": ".*",
+		"write": ".*",
+		"read": ".*"
+	  },
+	  {
+		"user": "guest",
+		"vhost": "Fanout_GSP",
+		"configure": ".*",
+		"write": ".*",
+		"read": ".*"
+	  },
+	  {
+		"user": "guest",
+		"vhost": "Direct_ASP",
+		"configure": ".*",
+		"write": ".*",
+		"read": ".*"
+	  },
+	  {
+		"user": "guest",
+		"vhost": "Fanout_ASP",
+		"configure": ".*",
+		"write": ".*",
+		"read": ".*"
+	  }
+	],
+	"topic_permissions": [],
+	"parameters": [],
+	"policies": [],
+	"queues": [],
+	"exchanges": [],
+	"bindings": []
+  }

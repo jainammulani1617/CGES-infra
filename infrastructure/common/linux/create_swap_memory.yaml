@@ -1,0 +1,26 @@
+---
+- hosts: '{{ target }}'
+  tasks:
+    - name: Before you start the changes disable the use of swap.
+      become: true
+      command: "swapoff -a"
+      
+    - name: First, let's create a file and preallocate space for the swap.
+      become: true
+      command: "fallocate -l 4G /swap"
+
+    - name: SWAP file is now created. Let’s give root-only permissions to it.
+      become: true
+      command: "chmod 600 /swap"
+
+    - name: Mark the file as SWAP space.
+      become: true
+      command: "mkswap /swap"
+
+    - name: Activate the swap file.
+      become: true
+      command: "swapon /swap"
+      
+    - name: Activate the swap file.
+      become: true
+      command: "echo '/swap none swap sw 0 0' | sudo tee -a /etc/fstab"

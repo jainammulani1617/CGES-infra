@@ -1,90 +1,144 @@
 terraform {
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 4.16"
+    oci = {
+      source  = "oracle/oci"
+      version = "~> 6.26.0"
     }
   }
 
   required_version = ">= 1.2.0"
 }
 
-provider "aws" {
+provider "oci" {
   region = var.global.region
 }
 
-resource "aws_security_group" "sg_redis" {
-  name        = "${local.product}-${var.global.environment}-SecurityGroup-Redis"
-  description = "Allow inbound traffic from application"
-  vpc_id      = var.global.vpc_id
+resource "oci_core_network_security_group" "nsg_redis" {
+  compartment_id = var.global.compartment_id
+  vcn_id         = var.global.vcn_id
+  display_name   = "${local.product}-${var.global.environment}-NSG-Redis"
 
-  ingress {
-    description = "Allow SSH from bastion"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = [var.global.bastion_ip]
-  }
-
-  ingress {
-    description = "Allow incoming connection for redis db"
-    from_port   = 6379
-    to_port     = 6379
-    protocol    = "tcp"
-    cidr_blocks = var.global.cidr_blocks
-  }
-
-  ingress {
-    description = "Allow internal communication between nodes of redis cluster"
-    from_port   = 16379
-    to_port     = 16379
-    protocol    = "tcp"
-    cidr_blocks = var.global.cidr_blocks
-  }
-
-  egress {
-    from_port        = 0
-    to_port          = 0
-    protocol         = "-1"
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
-  }
-
-  tags = {
-    Name         = "${local.product}-${var.global.environment}-SecurityGroup-Redis"
+  freeform_tags = {
+    Name         = "${local.product}-${var.global.environment}-NSG-Redis"
     Environment  = var.global.environment
     Module       = local.product
     Team         = var.global.team
   }
 }
 
-resource "aws_instance" "ec2_redis" {
-  for_each               = local.redis.instances
-  key_name               = var.global.bastion_name
-  ami                    = local.redis.ami
-  instance_type          = var.input.instance_type
-  disable_api_termination = var.input.termination_protection
-  ebs_optimized          = local.redis.ebs_optimized
-  vpc_security_group_ids = [aws_security_group.sg_redis.id]
-  subnet_id              = each.value.subnet_id
-  iam_instance_profile   = var.input.cloudwatch_iam_profile
-  root_block_device {
-    volume_size = var.input.volume_size
-    volume_type = local.redis.volume_type
-    encrypted   = local.redis.encrypted
+resource "oci_core_network_security_group_security_rule" "nsg_redis_ssh" {
+  network_security_group_id = oci_core_network_security_group.nsg_redis.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  description               = "Allow SSH from bastion"
+
+  source      = var.global.bastion_ip
+  source_type = "CIDR_BLOCK"
+
+  tcp_options {
+    destination_port_range {
+      min = 22
+      max = 22
+    }
   }
-  tags = {
-    Name         = each.value.name
-    Environment  = var.global.environment
-    Module       = local.product
-    Team         = var.global.team
+}
+
+resource "oci_core_network_security_group_security_rule" "nsg_redis_6379" {
+  for_each = toset(var.global.cidr_blocks)
+  
+  network_security_group_id = oci_core_network_security_group.nsg_redis.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  description               = "Allow incoming connection for redis db"
+
+  source      = each.value
+  source_type = "CIDR_BLOCK"
+
+  tcp_options {
+    destination_port_range {
+      min = 6379
+      max = 6379
+    }
   }
+}
+
+resource "oci_core_network_security_group_security_rule" "nsg_redis_16379" {
+  for_each = toset(var.global.cidr_blocks)
+  
+  network_security_group_id = oci_core_network_security_group.nsg_redis.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  description               = "Allow internal communication between nodes of redis cluster"
+
+  source      = each.value
+  source_type = "CIDR_BLOCK"
+
+  tcp_options {
+    destination_port_range {
+      min = 16379
+      max = 16379
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "nsg_redis_egress" {
+  network_security_group_id = oci_core_network_security_group.nsg_redis.id
+  direction                 = "EGRESS"
+  protocol                  = "all"
+  description               = "Allow all outbound traffic"
+
+  destination      = "0.0.0.0/0"
+  destination_type = "CIDR_BLOCK"
+}
+
+resource "oci_core_instance" "compute_redis" {
+  for_each            = local.redis.instances
+  compartment_id      = var.global.compartment_id
+  availability_domain = each.value.availability_domain
+  shape               = var.input.instance_type
+
+  shape_config {
+    ocpus         = local.redis.ocpus
+    memory_in_gbs = local.redis.memory_in_gbs
+  }
+
+  create_vnic_details {
+    subnet_id                 = each.value.subnet_id
+    assign_public_ip          = false
+    nsg_ids                   = [oci_core_network_security_group.nsg_redis.id]
+    assign_private_dns_record = true
+  }
+
+  source_details {
+    source_type = "image"
+    source_id   = local.redis.image_id
+    boot_volume_size_in_gbs = var.input.volume_size
+  }
+
+  metadata = {
+    ssh_authorized_keys = file(var.global.bastion_key)
+  }
+
+  instance_options {
+    are_legacy_imds_endpoints_disabled = false
+  }
+
+  is_pv_encryption_in_transit_enabled = true
+
+  freeform_tags = {
+    Name        = each.value.name
+    Environment = var.global.environment
+    Module      = local.product
+    Team        = var.global.team
+  }
+
   connection {
     type        = "ssh"
     user        = var.global.bastion_user
     host        = self.private_ip
     private_key = file(var.global.bastion_key)
   }
+  
   provisioner "remote-exec" {
     inline = [
       "echo 'Wait until SSH is ready'"
@@ -94,17 +148,17 @@ resource "aws_instance" "ec2_redis" {
 
 locals {
   depends_on = [
-    aws_instance.ec2_redis
+    oci_core_instance.compute_redis
   ]
   output = {
-    ips           = join(",", [for v in aws_instance.ec2_redis : v.private_ip])
-    ips_and_ports = join(" ", [for v in aws_instance.ec2_redis : join(":", [v.private_ip, 6379])])
+    ips           = join(",", [for v in oci_core_instance.compute_redis : v.private_ip])
+    ips_and_ports = join(" ", [for v in oci_core_instance.compute_redis : join(":", [v.private_ip, 6379])])
   }
 }
 
 resource "null_resource" "create_swap_memory" {
   depends_on = [
-    aws_instance.ec2_redis
+    oci_core_instance.compute_redis
   ]
   triggers = {
     file_hash = filesha1("${path.root}/${var.input.linux_configuration_path}")
@@ -134,7 +188,7 @@ resource "null_resource" "create_redis_cluster" {
     file_hash = filesha1("${path.module}/create_redis_cluster.yaml")
   }
   provisioner "local-exec" {
-    command = "ansible-playbook -i ${aws_instance.ec2_redis[0].private_ip}, ${path.module}/create_redis_cluster.yaml --extra-vars \"target=${aws_instance.ec2_redis[0].private_ip} redis_cluster_details='${local.output.ips_and_ports}' redis_password=${var.input.password}\""
+    command = "ansible-playbook -i ${values(oci_core_instance.compute_redis)[0].private_ip}, ${path.module}/create_redis_cluster.yaml --extra-vars \"target=${values(oci_core_instance.compute_redis)[0].private_ip} redis_cluster_details='${local.output.ips_and_ports}' redis_password=${var.input.password}\""
   }
 }
 

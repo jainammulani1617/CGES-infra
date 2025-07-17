@@ -11,7 +11,8 @@ variable "global" {
     bastion_user         = string
     bastion_key          = string
     availability_domains = list(string)
-    compartment_id       = string
+    compartment_ocid       = string
+    tenancy_ocid       = string
   })
   description = "Pass global variables file as terraform command argument. Example -var-file=\"../global/{product}/global_variables.tfvars\""
 }

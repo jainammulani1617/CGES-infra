@@ -348,9 +348,9 @@ resource "oci_load_balancer" "lb_rabbitmq" {
   ]
 
   compartment_id = var.global.compartment_id
-  display_name   = "${local.product}-${var.global.environment}-LB-RabbitMQ-HA-${var.input.version}"
+  display_name   = "${local.product}-${var.global.environment}-NLB-RabbitMQ-HA-${var.input.version}"
   shape          = "flexible"
-  subnet_ids     = var.global.availability_domains
+  subnet_ids     = var.global.public_availability_domains
   is_private     = true
 
   shape_details {

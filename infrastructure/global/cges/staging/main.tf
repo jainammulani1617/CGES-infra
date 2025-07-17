@@ -1,27 +1,22 @@
-variable "global" {
-  description = "Global configuration object"
-  type        = any
-}
-
 terraform {
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 4.16"
+    oci = {
+      source  = "oracle/oci"
+      version = "~> 6.26.0"
     }
   }
 
   required_version = ">= 1.2.0"
 }
 
-provider "aws" {
+provider "oci" {
   region = var.global.region
 }
 
 module "rabbitmq_ha_v4" {
   source = "../../../modules/rabbitmq_single_node_ha/v4"
   global = var.global
-  input = {
+    input = {
     product                               = null
     version                               = "v4"
     instance_shape = "VM.Standard.A1.Flex"
@@ -34,7 +29,7 @@ module "rabbitmq_ha_v4" {
     linux_configuration_path              = "../../../common/linux/create_swap_memory.yaml"
     install_cloudwatch_agent_path         = "../../../common/monitoringagent/install_monitoring_agent.yaml"
     volume_size                           = 50
-    # cloudwatch_iam_profile                = var.global.cloudwatch_role
+    cloudwatch_iam_profile                = var.global.cloudwatch_role
     plugin_version = {
       delayed_message_exchange  = "4.1.0"
     }

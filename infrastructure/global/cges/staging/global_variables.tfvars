@@ -12,7 +12,7 @@ global = {
   bastion_ip   ="139.185.52.245"
   bastion_name = "OCI-CGI-Bastion-02"
   bastion_user = "ubuntu"
-  bastion_key  = "/home/ubuntu/.ssh/"
+  bastion_key  = "/home/ubuntu/.ssh/"      #???
   # bastion_sg_id           = "sg-01c1d6267d1f05977"
   # bastion_role_name       = "ASP-GSP-Stag-Role-BastionHost"
   # bastion_iam_role_name   = "ASP-GSP-Stag-Role-BastionHost"
@@ -24,7 +24,7 @@ global = {
   public_availability_domains = [
      "ocid1.subnet.oc1.ap-singapore-1.aaaaaaaa2whkjhh542enxz5zd5tucjlbmz3xzuv4ylo564t3ekf7nej5p7nq"
    ]
-   eks_availability_domains = [
+   oke_availability_domains = [
      "ocid1.subnet.oc1.ap-singapore-1.aaaaaaaa3koqorezrxah5jzsw44ajz3juk2ce6z5n35trpaq3ccormuk3cqq"
    ]
   # s3_role         = "IN-CI-Stag-IAM-Postgres-S3-Access"

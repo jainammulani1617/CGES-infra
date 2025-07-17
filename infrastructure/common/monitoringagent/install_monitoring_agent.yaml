@@ -1,13 +1,33 @@
 ---
-- hosts: "{{ target }}"
-  gather_facts: no
-  become: yes
+- hosts: '{{ target }}'
+  vars:
+    namespace: YOUR_NAMESPACE   # set via inventory or vars
+    ubuntu_version: "20"        # your OS version (18/20/22)
   tasks:
-    - name: Download OCI Monitoring Agent
-      get_url:
-        url: "https://objectstorage.{{ ansible_default_ipv4.address | regex_replace('.*\\.(.*)\\.(.*)\\..*', '\\1-\\2') }}.oraclecloud.com/p/monitoring-agent/monitoring-agent-latest.tar.gz"
-        dest: /tmp/monitoring-agent-latest.tar.gz
-        mode: '0644'
+    - name: Fetch monitoring-agent version info
+      become: true
+      shell: |
+        oci os object get --namespace {{ namespace }} \
+          --bucket-name unified-monitoring-agent-config \
+          --name versionInfoV2.yml \
+          --file /tmp/versionInfoV2.yml
+      register: version_fetch
+
+    - name: Parse stable version from YAML
+      become: true
+      shell: |
+        grep -A1 "Ubuntu:" /tmp/versionInfoV2.yml | grep stableVersion | awk -F '"' '{print $2}'
+      register: agent_version
+
+    - name: Download latest monitoring agent .deb
+      become: true
+      shell: |
+        oci os object get --namespace {{ namespace }} \
+          --bucket-name unified-monitoring-agent-ub-bucket \
+          --name unified-monitoring-agent-ub-{{ ubuntu_version }}-{{ agent_version.stdout }}.deb \
+          --file /tmp/unified-monitoring-agent.deb
+      args:
+        creates: /tmp/unified-monitoring-agent.deb
 
     - name: Extract OCI Monitoring Agent
       unarchive:

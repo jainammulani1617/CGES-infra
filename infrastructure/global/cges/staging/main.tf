@@ -24,12 +24,17 @@ module "rabbitmq_ha_v4" {
       ocpus         = 1
       memory_in_gbs = 4
     }
+    standby_instance_shape = "VM.Standard.A1.Flex"
+    standby_instance_shape_config = {
+      ocpus         = 1
+      memory_in_gbs = 4
+    }
     termination_protection                = true
     initial_configuration_path            = "rabbitmq/initial_configuration.json"
     linux_configuration_path              = "../../../common/linux/create_swap_memory.yaml"
-    install_cloudwatch_agent_path         = "../../../common/monitoringagent/install_monitoring_agent.yaml"
+    install_monitoring_agent_path         = "../../../common/monitoringagent/install_monitoring_agent.yaml"
     volume_size                           = 50
-    cloudwatch_iam_profile                = var.global.cloudwatch_role
+    # cloudwatch_iam_profile                = var.global.cloudwatch_role
     plugin_version = {
       delayed_message_exchange  = "4.1.0"
     }

@@ -155,12 +155,16 @@ resource "oci_core_network_security_group_security_rule" "nsg_rabbitmq_egress" {
 resource "oci_core_instance" "compute_rabbitmq" {
   for_each            = local.rabbitmq.instances
   compartment_id      = var.global.compartment_id
-  availability_domain = each.value.availability_domain
-  shape               = each.value.instance_type
+  availability_domain = var.global.availability_domain
+  shape               = each.value.instance_shape
+  display_name = each.value.name
 
-  shape_config {
-    ocpus         = local.rabbitmq.ocpus[each.key]
-    memory_in_gbs = local.rabbitmq.memory_in_gbs[each.key]
+  dynamic "shape_config" {
+    for_each = each.value.shape_config != null ? [each.value.shape_config] : []
+    content {
+      ocpus         = shape_config.value.ocpus
+      memory_in_gbs = shape_config.value.memory_in_gbs
+    }
   }
 
   create_vnic_details {
@@ -172,8 +176,15 @@ resource "oci_core_instance" "compute_rabbitmq" {
 
   source_details {
     source_type = "image"
-    source_id   = local.rabbitmq.image_id
+    source_id   = local.rabbitmq.default_image_id
     boot_volume_size_in_gbs = var.input.volume_size
+  }
+
+  freeform_tags = {
+    Name        = each.value.name
+    Environment = var.global.environment
+    Module      = local.product
+    Team        = var.global.team
   }
 
   metadata = {
@@ -186,12 +197,6 @@ resource "oci_core_instance" "compute_rabbitmq" {
 
   is_pv_encryption_in_transit_enabled = true
 
-  freeform_tags = {
-    Name        = each.value.name
-    Environment = var.global.environment
-    Module      = local.product
-    Team        = var.global.team
-  }
 
   connection {
     type        = "ssh"
@@ -350,7 +355,7 @@ resource "oci_load_balancer" "lb_rabbitmq" {
   compartment_id = var.global.compartment_id
   display_name   = "${local.product}-${var.global.environment}-NLB-RabbitMQ-HA-${var.input.version}"
   shape          = "flexible"
-  subnet_ids     = var.global.public_availability_domains
+  subnet_ids     = [var.global.subnet_ocid]
   is_private     = true
 
   shape_details {

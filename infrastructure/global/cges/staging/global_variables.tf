@@ -6,8 +6,9 @@ variable "global" {
     product                   = string
     team                      = string
     region                    = string
-    tenancy_ocid              = string
-    compartment_ocid          = string
+    tenancy_id              = string
+    subnet_ocid           = string
+    compartment_id          = string
     vcn_id                    = string
     cidr_blocks               = list(string)
     bastion_ip                = string
@@ -19,6 +20,7 @@ variable "global" {
     # bastion_iam_role_name     = string
     # account_id                = string
     cygnet_cidr_blocks        = list(string)
+    availability_domain     = string
     private_availability_domains        = list(string)
     public_availability_domains = list(string)
     oke_availability_domains    = list(string)

@@ -2,8 +2,16 @@ variable "input" {
   type = object({
     product                       = string
     version                       = string
-    instance_type                 = string
-    standby_instance_type         = string
+    instance_shape = string
+    instance_shape_config = object({
+      ocpus         = number
+      memory_in_gbs = number
+    })
+    standby_instance_shape = string
+    standby_instance_shape_config = object({
+      ocpus         = number
+      memory_in_gbs = number
+    })
     volume_size                   = number
     termination_protection        = bool
     initial_configuration_path    = string
